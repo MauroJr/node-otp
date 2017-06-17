@@ -1,221 +1,180 @@
-// import dgram from 'dgram';
-// import crypto from 'crypto';
-// import os from 'os';
-// import util from 'util';
-// import uuid from '@libs/uuid';
-// import Emitter from '@libs/emitter';
+import * as dgram from 'dgram';
+import * as crypto from 'crypto';
+import * as os from 'os';
+import * as util from 'util';
+import uuid from '@libs/uuid';
+import Emitter from '@libs/emitter';
 
-// const nodeVersion = process.version.slice(1).split('.');
-// const procUuid = uuid.v4();
-// const hostName = os.hostname();
+const PUUID = uuid.v4();
+const HOST_NAME = os.hostname();
 
-// const defaultOpts = {
-//   address
-// }
-
-
-// export default function Network({
-//   address = '0.0.0.0',
-//   port = 11777,
-//   broadcast,
-//   multicast,
-//   multicastTTL = 1,
-//   unicast,
-//   key,
-//   reuseAddr = true,
-//   ignoreProcess = true,
-//   ignoreInstance = true
-// } = {}) {
-//   const emitter = Emitter();
-//   const socket = dgram.createSocket({ type: 'udp4', reuseAddr });
-//   const instanceUuid = uuid.v4();
-
-//   socket.on('message', (data, rinfo) => {
-//     decode(key, data, (err, decoded) => {
-//       const { pid, iid, event, data } = decoded;
-
-//       if (err) {
-//         // most decode errors are because we tried
-//         // to decrypt a packet for which we do not
-//         // have the key
-
-//         // the only other possibility is that the
-//         // message was split across packet boundaries
-//         // and that is not handled
-
-//         // self.emit("error", err);
-//       } else if (pid === procUuid && ignoreProcess && iid !== instanceUuid) {
-//         return false;
-//       } else if (iid === instanceUuid && ignoreInstance) {
-//         return false;
-//       } else if (event && data) {
-//         emitter.emit(event, data, decoded, rinfo);
-//       } else {
-//         emitter.emit('message', decoded);
-//       }
-//     });
-//   });
-// }
+const defaultOptions = {
+  address: '0.0.0.0',
+  port: 11777,
+  broadcast: undefined,
+  multicast: undefined,
+  multicastTTL: 1,
+  unicast: undefined,
+  key: undefined,
+  reuseAddr: true,
+  ignoreProcess: true,
+  ignoreInstance: true
+};
 
 
-//     self.socket.on("message", function ( data, rinfo ) {
-//         self.decode(data, function (err, obj) {
-//             if (err) {
-//                 //most decode errors are because we tried
-//                 //to decrypt a packet for which we do not
-//                 //have the key
+/**
+ * Network
+ *
+ * @export {Function}
+ * @param {object} [options=defaultOptions]
+ * @returns {object}
+ */
+export default function Network(options = defaultOptions) {
+  const opts = Object.assign({}, options, defaultOptions);
 
-//                 //the only other possibility is that the
-//                 //message was split across packet boundaries
-//                 //and that is not handled
+  const state = Object.assign({}, opts, {
+    socket: dgram.createSocket({ type: 'udp4', reuseAddr: opts.reuseAddr }),
+    emitter: Emitter(),
+    instanceUuid: uuid.v4()
+  });
 
-//                 //self.emit("error", err);
-//             }
-//           else if (obj.pid == procUuid && self.ignoreProcess && obj.iid !== self.instanceUuid) {
-//                     return false;
-//             }
-//             else if (obj.iid == self.instanceUuid && self.ignoreInstance) {
-//                     return false;
-//             }
-//             else if (obj.event && obj.data) {
-//                 self.emit(obj.event, obj.data, obj, rinfo);
-//             }
-//             else {
-//                 self.emit("message", obj)
-//             }
-//         });
-//     });
+  handledMessages(state);
 
-// //     self.on("error", function (err) {
-// //         //TODO: Deal with this
-// //         /*console.log("Network error: ", err.stack);*/
-// //     });
-// // };
+  // PUBLIC API
+  return Object.freeze({
+    start,
+    stop,
+    send
+  });
+}
 
-// // util.inherits(Network, EventEmitter);
+function handledMessages({ socket, key, emitter, instanceUuid, ignoreProcess, ignoreInstance }) {
+  socket.on('message', (data, rinfo) => {
+    decode(key, data, (err, decoded) => {
+      const { pid, iid, event, data } = decoded;
 
-// // Network.prototype.start = function (callback) {
-// //     var self = this;
+      if (err) {
+        // most decode errors are because we tried
+        // to decrypt a packet for which we do not
+        // have the key
 
-// //     self.socket.bind(self.port, self.address, function () {
-// //         if (self.unicast) {
-// //             if (typeof self.unicast === 'string' && ~self.unicast.indexOf(',')) {
-// //                 self.unicast = self.unicast.split(',');
-// //             }
+        // the only other possibility is that the
+        // message was split across packet boundaries
+        // and that is not handled
 
-// //             self.destination = [].concat(self.unicast);
-// //         }
-// //         else if (!self.multicast) {
-// //             //Default to using broadcast if multicast address is not specified.
-// //             self.socket.setBroadcast(true);
+        emitter.emit('error', err);
+      } else if (pid === PUUID && ignoreProcess && iid !== instanceUuid) {
+        return false;
+      } else if (iid === instanceUuid && ignoreInstance) {
+        return false;
+      } else if (event && data) {
+        emitter.emit(event, data, decoded, rinfo);
+      } else {
+        emitter.emit('message', decoded);
+      }
+    });
+  });
+}
 
-// // TODO: get the default broadcast address from os.networkInterfaces() (not currently returned)
-// //             self.destination = [self.broadcast || "255.255.255.255"];
-// //         }
-// //         else {
-// //             try {
-// //                 //addMembership can throw if there are no interfaces available
-// //                 self.socket.addMembership(self.multicast);
-// //                 self.socket.setMulticastTTL(self.multicastTTL);
-// //             }
-// //             catch (e) {
-// //                 self.emit('error', e);
+async function start({ socket, port, address, unicast, broadcast, multicast, multicastTTL }) {
+  return new Promise((resolve, reject) => {
+    socket.bind(port, address, () => {
+      if (unicast !== undefined) {
+        if (typeof unicast === 'string' && unicast.indexOf(',') !== -1) {
+          return resolve(unicast.split(','));
+        }
 
-// //                 return callback && callback(e);
-// //             }
+        return resolve([].concat(unicast));
+      }
 
-// //             self.destination = [self.multicast];
-// //         }
+      if (multicast !== undefined) {
+        // Default to using broadcast if multicast address is not specified.
+        socket.setBroadcast(true);
 
-// //         return callback && callback();
-// //     });
-// // };
+        // TODO: get the default broadcast address from os.networkInterfaces()
+        // (not currently returned)
+        return resolve([broadcast || '255.255.255.255']);
+      }
 
-// // Network.prototype.stop = function (callback) {
-// //     var self = this;
+      try {
+        // addMembership can throw if there are no interfaces available
+        socket.addMembership(multicast);
+        socket.setMulticastTTL(multicastTTL);
+      } catch (err) {
+        return reject(err);
+      }
 
-// //     self.socket.close();
+      return resolve([multicast]);
+    });
+  });
+}
 
-// //     return callback && callback();
-// // };
+async function stop(socket) {
+  return util.promisify(socket.close)();
+}
 
-// // Network.prototype.send = function (event) {
-// //     var self = this;
+async function send(event, data, { socket, port, instanceUuid, destinations }) {
+  const obj = {
+    event,
+    procUuid: PUUID,
+    instanceUuid,
+    hostName: HOST_NAME,
+    data
+  };
 
-// //     var obj = {
-// //         event : event,
-// //         pid : procUuid,
-// //         iid : self.instanceUuid,
-// //         hostName : hostName
-// //     };
+  encode(obj, (err, contents) => {
+    if (err) {
+      return false;
+    }
 
-// //     if (arguments.length == 2) {
-// //         obj.data = arguments[1];
-// //     }
-// //     else {
-// //         //TODO: splice the arguments array and remove the first element
-// //         //setting data to the result array
-// //     }
+    const msg = new Buffer(contents);
 
-// //     self.encode(obj, function (err, contents) {
-// //         if (err) {
-// //             return false;
-// //         }
+    destinations.forEach((destination) => {
+      socket.send(msg, 0, msg.length, port, destination);
+    });
+  });
+}
 
-// //         var msg = new Buffer(contents);
+function encode(key, data, callback) {
+  let encoded;
 
-// //         self.destination.forEach(function (destination) {
-// //             self.socket.send(
-// //                 msg
-// //                 , 0
-// //                 , msg.length
-// //                 , self.port
-// //                 , destination
-// //             );
-// //         });
-// //     });
-// // };
+  try {
+    encoded = key ? encrypt(JSON.stringify(data), key) : JSON.stringify(data);
+  } catch (e) {
+    return callback(e);
+  }
 
-// function encode(key, data, callback) {
-//   let encoded;
+  return callback(undefined, encoded);
+}
 
-//   try {
-//     encoded = key ? encrypt(JSON.stringify(data), key) : JSON.stringify(data);
-//   } catch (e) {
-//     return callback(e);
-//   }
+function decode(key, data, callback) {
+  let decoded;
 
-//   return callback(undefined, encoded);
-// }
+  try {
+    if (key) {
+      decoded = JSON.parse(decrypt(data.toString(), key));
+    } else {
+      decoded = JSON.parse(data);
+    }
+  } catch (e) {
+    return callback(e);
+  }
 
-// function decode (key, data, callback) {
-//   let decoded;
+  return callback(undefined, decoded);
+}
 
-//   try {
-//     if (key) {
-//       decoded = JSON.parse(decrypt(data.toString(), key));
-//     } else {
-//       decoded = JSON.parse(data);
-//     }
-//   } catch (e) {
-//     return callback(e);
-//   }
+function encrypt(str, key) {
+  const cipher = crypto.createCipher('aes256', key);
+  const chunk1 = cipher.update(str, 'utf8', 'binary');
+  const chunk2 = cipher.final('binary');
 
-//   return callback(undefined, decoded);
-// }
+  return chunk1 + chunk2;
+}
 
-// function encrypt(str, key) {
-//   const cipher = crypto.createCipher('aes256', key);
-//   const chunk1 = cipher.update(str, 'utf8', 'binary');
-//   const chunk2 = cipher.final('binary');
+function decrypt(str, key) {
+  const decipher = crypto.createDecipher('aes256', key);
+  const chunk1 = decipher.update(str, 'binary', 'utf8');
+  const chunk2 = decipher.final('utf8');
 
-//   return chunk1 + chunk2;
-// }
-
-// function decrypt(str, key) {
-//   const decipher = crypto.createDecipher('aes256', key);
-//   const chunk1 = decipher.update(str, 'binary', 'utf8');
-//   const chunk2 = decipher.final('utf8');
-
-//   return chunk1 + chunk2;
-// }
+  return chunk1 + chunk2;
+}
