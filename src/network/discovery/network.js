@@ -30,7 +30,7 @@ const defaultOptions = {
  * @returns {object}
  */
 export default function Network(options = defaultOptions) {
-  const opts = Object.assign({}, options, defaultOptions);
+  const opts = Object.assign({}, defaultOptions, options);
 
   const state = Object.assign({}, opts, {
     socket: dgram.createSocket({ type: 'udp4', reuseAddr: opts.reuseAddr }),
