@@ -2,7 +2,7 @@
 import Emitter from '@libs/emitter';
 import Network from './network';
 
-// const reservedEvents = ['promotion', 'demotion', 'added', 'removed', 'master', 'hello'];
+const reservedEvents = ['promotion', 'demotion', 'added', 'removed', 'master', 'hello'];
 const defaultOptions = {
   helloInterval: 1000,
   checkInterval: 2000,
@@ -236,7 +236,10 @@ export default function Discover(options = defaultOptions, done) {
       promote,
       hello,
       advertise,
-      eachNode
+      eachNode,
+      join,
+      send,
+      leave
     });
   };
 }
@@ -263,6 +266,46 @@ function eachNode(self, fn) {
   Object.keys(nodes).forEach((uuid) => {
     fn(nodes[uuid]);
   });
+}
+
+function join(self, channel, fn) {
+  if (reservedEvents.indexOf(channel) !== -1) {
+    return false;
+  }
+
+  if (self.channels.indexOf(channel) !== -1) {
+    return false;
+  }
+
+  if (fn) {
+    self.on(channel, fn);
+  }
+
+  self.broadcast.on(channel, (data, obj, rinfo) => {
+    self.emit(channel, data, obj, rinfo);
+  });
+
+  self.channels.push(channel);
+
+  return true;
+}
+
+function leave(self, channel) {
+  self.broadcast.removeAllListeners(channel);
+
+  delete self.channels[self.channels.indexOf(channel)];
+
+  return true;
+}
+
+function send(self, channel, obj) {
+  if (reservedEvents.indexOf(channel) !== -1) {
+    return false;
+  }
+
+  self.broadcast.send(channel, obj);
+
+  return true;
 }
 
 function weight() {
