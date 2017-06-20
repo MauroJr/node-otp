@@ -194,7 +194,7 @@ export default function Discover(options = defaultOptions, done) {
       if (self.server) {
         // send hello every helloInterval
         self.helloId = setInterval(() => {
-          self.hello();
+          hello(self);
         }, helloInterval());
       }
 
@@ -238,7 +238,12 @@ function promote(self) {
   self.me.isMasterEligible = true;
   self.me.isMaster = true;
   self.emit('promotion', self.me);
-  self.hello();
+  hello(self);
+}
+
+function hello(self) {
+  self.broadcast.send('hello', self.me);
+  self.emit('helloEmitted');
 }
 
 function weight() {
