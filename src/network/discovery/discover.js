@@ -168,7 +168,7 @@ export default function Discover(options = defaultOptions, done) {
       mastersFound < opts.mastersRequired &&
       self.me.isMasterEligible && !higherWeightFound) {
       // no masters found out of all our nodes, become one.
-      self.promote();
+      promote(self);
     }
   };
 
@@ -232,6 +232,13 @@ export default function Discover(options = defaultOptions, done) {
       return self.checkInterval;
     }
   };
+}
+
+function promote(self) {
+  self.me.isMasterEligible = true;
+  self.me.isMaster = true;
+  self.emit('promotion', self.me);
+  self.hello();
 }
 
 function weight() {
