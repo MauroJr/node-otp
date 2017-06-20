@@ -231,6 +231,13 @@ export default function Discover(options = defaultOptions, done) {
 
       return self.checkInterval;
     }
+
+    return Object.freeze({
+      promote,
+      hello,
+      advertise,
+      eachNode
+    });
   };
 }
 
@@ -244,6 +251,18 @@ function promote(self) {
 function hello(self) {
   self.broadcast.send('hello', self.me);
   self.emit('helloEmitted');
+}
+
+function advertise(self, obj) {
+  self.me.advertisement = obj;
+}
+
+function eachNode(self, fn) {
+  const nodes = self.nodes;
+
+  Object.keys(nodes).forEach((uuid) => {
+    fn(nodes[uuid]);
+  });
 }
 
 function weight() {
