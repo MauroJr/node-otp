@@ -171,6 +171,52 @@ export default async function Discover(options = defaultOptions) {
       self.promote();
     }
   };
+
+
+  self.start = (callback) => {
+    if (self.running) {
+      if (callback) {
+        callback(undefined, false);
+      }
+
+      return false;
+    }
+
+    self.broadcast.start((err) => {
+      if (err) {
+        return callback && callback(err, false);
+      }
+
+      self.running = true;
+
+      self.checkId = setInterval(self.check, checkInterval());
+
+      if (self.server) {
+        // send hello every helloInterval
+        self.helloId = setInterval(() => {
+          self.hello();
+        }, helloInterval());
+      }
+
+      return callback && callback(null, true);
+    });
+
+    function helloInterval() {
+      if (typeof self.helloInterval === 'function') {
+        return self.helloInterval(self);
+      }
+
+      return self.helloInterval;
+    }
+
+    function checkInterval() {
+      if (typeof self.checkInterval === 'function') {
+        return self.checkInterval(self);
+      }
+
+      return self.checkInterval;
+    }
+  };
 }
 
 function weight() {
