@@ -26,7 +26,7 @@ const defaultOptions = {
 };
 
 
-export default async function Discover(options = defaultOptions) {
+export default function Discover(options = defaultOptions, done) {
   const emitter = Emitter();
   const opts = Object.assign({}, defaultOptions, options);
   const self = Object.assign({}, opts, {
@@ -200,6 +200,21 @@ export default async function Discover(options = defaultOptions) {
 
       return callback && callback(null, true);
     });
+
+    self.stop = () => {
+      if (!self.running) {
+        return false;
+      }
+
+      self.broadcast.stop();
+
+      clearInterval(self.checkId);
+      clearInterval(self.helloId);
+
+      self.running = false;
+    };
+
+    self.start(done);
 
     function helloInterval() {
       if (typeof self.helloInterval === 'function') {
